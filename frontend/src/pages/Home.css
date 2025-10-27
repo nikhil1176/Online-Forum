@@ -1,0 +1,10 @@
+/* File: src/pages/Home.css */
+.post-grid {
+  display: grid;
+  /* This creates responsive columns:
+     - auto-fill: As many columns as can fit.
+     - minmax(300px, 1fr): Each column is at least 300px wide, 
+       and all columns share the extra space equally (1fr). */
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px; /* This is the space between your post cards */
+}

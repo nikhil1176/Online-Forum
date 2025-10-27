@@ -1,0 +1,19 @@
+# Backend dependencies
+/backend/node_modules
+
+# Backend environment variables
+/backend/.env
+
+# Frontend dependencies
+/frontend/node_modules
+
+#my part
+backend/models
+
+frontend/components/navbar
+
+frontend/components/postcard
+
+frontend/pages/createpost
+
+frontend/pages/postdetail
