@@ -17,3 +17,5 @@ frontend/components/postcard
 frontend/pages/createpost
                                                                                                                                      
 frontend/pages/postdetail
+
+/frontend/.env
