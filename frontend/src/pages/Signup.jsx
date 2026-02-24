@@ -1,19 +1,30 @@
-import React, { useState } from "react";
-import { register as apiRegister } from "../api/authApi";
+// src/pages/Signup.jsx
+import React, { useState, useContext } from "react";
+import axiosClient from "../api/axiosClient";
+import { AuthContext } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 
 export default function Signup() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const { login } = useContext(AuthContext);
   const nav = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const res = await apiRegister({ username, email, password });
-      alert(res.data.msg || "Signup successful");
-      nav("/login");
+      // Register
+      await axiosClient.post("/auth/register", { username, email, password });
+
+      // Auto-login after register
+      const loginRes = await axiosClient.post("/auth/login", { email, password });
+      const { accessToken, user } = loginRes.data;
+
+      // Use AuthContext login method
+      login(accessToken, user);
+
+      nav("/");
     } catch (err) {
       console.error("Signup Error:", err);
       alert(err.response?.data?.msg || "Signup failed");
@@ -22,35 +33,33 @@ export default function Signup() {
 
   return (
     <div className="flex justify-center items-center min-h-[70vh]">
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white shadow-md rounded-lg p-6 w-full max-w-sm"
-      >
+      <form onSubmit={handleSubmit} className="bg-white shadow-md rounded-lg p-6 w-full max-w-sm">
         <h2 className="text-2xl font-semibold mb-4 text-gray-800 text-center">Sign Up</h2>
+
         <input
           placeholder="Username"
-          className="w-full mb-3 border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+          className="w-full mb-3 border border-gray-300 rounded-md p-2"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
         />
+
         <input
           type="email"
           placeholder="Email"
-          className="w-full mb-3 border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+          className="w-full mb-3 border border-gray-300 rounded-md p-2"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
+
         <input
           type="password"
           placeholder="Password"
-          className="w-full mb-4 border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+          className="w-full mb-4 border border-gray-300 rounded-md p-2"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <button
-          type="submit"
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-md font-medium transition"
-        >
+
+        <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-md">
           Register
         </button>
       </form>

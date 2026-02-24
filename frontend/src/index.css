@@ -1,3 +1,8 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Enable dark mode visuals */
+html.dark {
+  color-scheme: dark;
+}

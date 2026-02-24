@@ -1,61 +1,97 @@
-import React, { createContext, useState, useEffect } from "react";
-// Import 'me' --- this was the missing piece
-import { me } from "../api/authApi";
-// We don't need 'login' or 'register' from authApi here
+import React, { createContext, useState, useEffect, useContext } from "react";
+import axios from "axios"; // Uses default axios for the initial fetch
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  // Initialize token state from localStorage
-  const [token, setToken] = useState(localStorage.getItem("token") || null);
-  // Start with loading=true until we check the token
+  // 1. Initialize Token from Local Storage
+  const [token, setToken] = useState(() => {
+    const saved = localStorage.getItem("token");
+    return (saved && saved !== "null" && saved !== "undefined") ? saved : null;
+  });
+
+  // 2. Initialize User from Local Storage (Persists Admin Role on Refresh)
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem("user");
+    try {
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const init = async () => {
-      const storedToken = localStorage.getItem("token");
-      if (storedToken) {
-        try {
-          // Verify the token using the 'me' endpoint
-          // We don't pass the token here, the axios interceptor does it
-          const res = await me(); 
-          
-          // Set user and token state from the verified response
-          setUser(res.data.user || null);
-          setToken(storedToken);
-        } catch (err) {
-          // If 'me' call fails, the token is bad or expired
-          console.error("Auth check failed", err);
-          setToken(null);
-          setUser(null);
-          localStorage.removeItem("token");
-        }
-      }
-      // Finished checking, set loading to false
-      setLoading(false);
-    };
-    init();
-  }, []); // <-- Run this ONLY once on app load
-
-  const login = (t, userData) => {
-    // This function is called from LoginPage
-    setToken(t);
-    localStorage.setItem("token", t);
-    setUser(userData);
-  };
+  // Helper to check if user is admin
+  const isAdmin = user?.role === "admin";
 
   const logout = () => {
-    // This function is called from Navbar
-    setToken(null);
     localStorage.removeItem("token");
+    localStorage.removeItem("user"); // Clean up user data
+    setToken(null);
     setUser(null);
   };
 
+  const login = (newToken, userData) => {
+    localStorage.setItem("token", newToken);
+    localStorage.setItem("user", JSON.stringify(userData)); // Save user data
+    setToken(newToken);
+    setUser(userData);
+  };
+
+  useEffect(() => {
+    const initAuth = async () => {
+      // If no token, stop loading
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // Verify token with backend
+        const res = await axios.get("http://localhost:5000/api/auth/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        
+        // FIX: Extract the inner 'user' object so 'user.role' works correctly
+        const userData = res.data.user; 
+        
+        // Update state and sync to local storage
+        setUser(userData);
+        localStorage.setItem("user", JSON.stringify(userData));
+        
+      } catch (err) {
+        console.error("Auth Init Error:", err);
+        // If the token is invalid/expired, log out
+        logout(); 
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initAuth();
+  }, [token]);
+
+  const value = { 
+    user, 
+    setUser, 
+    token, 
+    setToken, 
+    loading, 
+    isAdmin, 
+    login, 
+    logout 
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading }}>
-      {/* Only render children when NOT loading */}
-      {!loading && children}
+    <AuthContext.Provider value={value}>
+      {children}
     </AuthContext.Provider>
   );
 };
+
+export const useAuth = () => {
+  return useContext(AuthContext);
+};
+
+export default AuthProvider;

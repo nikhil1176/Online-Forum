@@ -3,11 +3,9 @@ const path = require("path");
 
 // 1. Configure Storage
 const storage = multer.diskStorage({
-  // Set the destination folder for uploaded files
   destination: (req, file, cb) => {
-    cb(null, "uploads/"); // Make sure you have a folder named 'uploads' in your root
+    cb(null, "uploads/"); 
   },
-  // Set the file name
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     cb(null, file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname));
@@ -21,9 +19,13 @@ const fileFilter = (req, file, cb) => {
   const mime = allowedTypes.test(file.mimetype);
 
   if (ext && mime) {
-    cb(null, true);
+    cb(null, true); // Accept the file
   } else {
-    cb(new Error("Error: Only .jpg, .jpeg, or .png files are allowed!"), false);
+    // --- THIS IS THE FIX ---
+    // Instead of throwing an error, we just reject the file.
+    // This stops the server from crashing.
+    cb(null, false);
+    // -----------------------
   }
 };
 
@@ -34,7 +36,4 @@ const upload = multer({
   limits: { fileSize: 1024 * 1024 * 5 }, // 5MB file size limit
 });
 
-// Export the middleware.
-// '.single("image")' must match the key from your frontend:
-// formData.append("image", image);
 module.exports = upload.single("image");

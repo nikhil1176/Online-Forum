@@ -1,91 +1,172 @@
-import React, { useState, useEffect, useContext } from "react";
-import { getCommentsByPost, addComment } from "../api/commentApi";
-import { AuthContext } from "../context/AuthContext";
-
-const PencilIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-  </svg>
-);
-
-const PaperPlaneIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="22" y1="2" x2="11" y2="13"></line>
-    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-  </svg>
-);
-
-const SparkleIcon = () => (
-  <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 3v.01M12 21v.01M3 12h.01M21 12h.01M5.64 5.64l.01.01M18.36 18.36l.01.01M5.64 18.36l.01-.01M18.36 5.64l.01-.01" />
-  </svg>
-);
+// src/components/CommentSection.jsx
+import React, { useEffect, useState, useRef } from "react";
+import {
+  getCommentsByPost,
+  addComment,
+  getUnapprovedComments,
+  approveComment,
+} from "../api/commentApi";
+import { useAuth } from "../context/AuthContext";
+import CommentItem from "./CommentItem";
 
 export default function CommentSection({ postId }) {
+  const { token, user, isAdmin } = useAuth(); 
+  
   const [comments, setComments] = useState([]);
-  const [text, setText] = useState("");
-  const { token } = useContext(AuthContext);
+  const [pending, setPending] = useState([]);
+  const [newText, setNewText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const commentTextAreaRef = useRef(null); 
 
   useEffect(() => {
+    let mounted = true;
     const load = async () => {
-      const res = await getCommentsByPost(postId);
-      setComments(res.data || []);
+      setLoading(true);
+      try {
+        const res = await getCommentsByPost(postId);
+        if (!mounted) return;
+        setComments(res.data || []);
+
+        if (isAdmin && token) {
+          const p = await getUnapprovedComments();
+          setPending(p.data || []);
+        }
+      } catch (err) {
+        console.error("Failed to load comments", err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
     };
     load();
-  }, [postId]);
+    return () => { mounted = false; };
+  }, [postId, token, isAdmin]);
 
-  const handleAdd = async (e) => {
+  const handleAddComment = async (e) => {
     e.preventDefault();
-    if (!text.trim()) return;
+    if (!newText.trim()) return;
+    if (!token) return alert("Please log in.");
+
     try {
-      await addComment(postId, { text }, token);
-      const res = await getCommentsByPost(postId);
-      setComments(res.data || []);
-      setText("");
+      const res = await addComment(postId, { text: newText });
+      const created = res.data.comment || res.data;
+      
+      if (created.status === 'approved' || isAdmin) {
+        setComments((prev) => [created, ...(prev || [])]);
+      } else {
+        alert("Comment submitted! It will appear after admin approval.");
+      }
+      setNewText("");
     } catch (err) {
-      console.error(err);
+      console.error("Add comment error", err);
       alert("Failed to add comment");
     }
   };
 
-  return (
-    <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-blue-500">
-      <h4 className="text-lg font-semibold text-gray-800 mb-4">Comments</h4>
+  const handleReplyAdded = (parentId, replyObj) => {
+    if (replyObj.status === 'pending' && !isAdmin) {
+       alert("Reply submitted for approval!");
+       return;
+    }
+    // Helper to find parent and append reply
+    const addReplyRecursive = (list) => {
+      return list.map((c) => {
+        if (c._id === parentId) {
+          const replies = c.replies ? [replyObj, ...c.replies] : [replyObj];
+          return { ...c, replies };
+        }
+        if (c.replies && c.replies.length > 0) {
+          return { ...c, replies: addReplyRecursive(c.replies) };
+        }
+        return c;
+      });
+    };
+    setComments((prev) => addReplyRecursive(prev));
+  };
 
-      {comments.length > 0 ? (
-        <div className="space-y-4">
-          {comments.map((c) => (
-            <div key={c._id} className="border-t border-gray-200 pt-3">
-              <p className="text-sm font-medium text-gray-700">
-                {c.author?.username || "Anon"}
-              </p>
-              <p className="text-gray-600">{c.text}</p>
-            </div>
+  // --- FIX: RECURSIVE DELETE (Removes nested replies instantly) ---
+  const handleCommentDeleted = (commentId) => {
+    const deleteRecursive = (list) => {
+      return list
+        .filter((c) => c._id !== commentId) // Remove from current level
+        .map((c) => {
+          // Search deeper if this comment has replies
+          if (c.replies && c.replies.length > 0) {
+            return { ...c, replies: deleteRecursive(c.replies) };
+          }
+          return c;
+        });
+    };
+
+    setComments((prev) => deleteRecursive(prev));
+  };
+
+  const handleVoteUpdated = (commentId, updatedComment) => {
+     const updateTree = (nodes) =>
+      nodes.map((n) => {
+        if (n._id === commentId) return { ...n, ...updatedComment };
+        if (n.replies?.length) return { ...n, replies: updateTree(n.replies) };
+        return n;
+      });
+    setComments((prev) => updateTree(prev || []));
+  };
+
+  const handleApprove = async (id) => {
+    try {
+      await approveComment(id);
+      const approved = pending.find((p) => p._id === id);
+      setPending((prev) => prev.filter((p) => p._id !== id));
+      if (approved) {
+        setComments((prev) => [{ ...approved, status: 'approved' }, ...(prev || [])]);
+      }
+    } catch (err) {
+      alert("Failed to approve");
+    }
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto p-4">
+      {/* Input Form */}
+      <form onSubmit={handleAddComment} className="mb-6">
+        <textarea
+          ref={commentTextAreaRef} 
+          rows={3}
+          value={newText}
+          onChange={(e) => setNewText(e.target.value)}
+          placeholder="Write your comment..."
+          className="w-full p-3 border rounded bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+        />
+        <div className="mt-3 flex justify-end">
+          <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Post Comment</button>
+        </div>
+      </form>
+
+      {/* Admin Pending Section */}
+      {isAdmin && pending.length > 0 && (
+        <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 rounded">
+          <h4 className="text-orange-600 font-bold mb-2">⚠️ Pending ({pending.length})</h4>
+          {pending.map(p => (
+             <div key={p._id} className="flex justify-between items-center p-2 bg-white dark:bg-gray-800 rounded mb-2">
+                <span className="text-sm truncate w-2/3 dark:text-gray-200">{p.text}</span>
+                <button onClick={() => handleApprove(p._id)} className="text-xs bg-green-600 text-white px-2 py-1 rounded">Approve</button>
+             </div>
           ))}
         </div>
-      ) : (
-        <p className="text-gray-500">No comments yet. Be the first!</p>
       )}
 
-      <form onSubmit={handleAdd} className="mt-5 space-y-3">
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={3}
-          placeholder="Write a comment..."
-          className="w-full h-24 p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none"
-        />
-        <button
-          type="submit"
-          className="flex items-center gap-2 px-5 py-2 mt-3 text-white font-semibold rounded-lg bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5"
-        >
-          <span>Post Comment</span>
-          <PaperPlaneIcon />
-        </button>
-        {!token && (
-          <p className="text-sm text-gray-500">Login to comment</p>
-        )}
-      </form>
+      {/* Comments List */}
+      <div className="space-y-4">
+        {comments.map((c) => (
+          <CommentItem 
+            key={c._id} 
+            item={c} 
+            currentUser={user}
+            isAdmin={isAdmin} 
+            onReplyAdded={handleReplyAdded} 
+            onVoteUpdated={handleVoteUpdated}
+            onCommentDeleted={handleCommentDeleted} 
+          />
+        ))}
+      </div>
     </div>
   );
 }

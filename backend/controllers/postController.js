@@ -1,114 +1,216 @@
-// File: controllers/postController.js
+// controllers/postController.js
 const Post = require("../models/Posts");
+const Comment = require("../models/Comment");
 
-// --- 1. THIS IS THE FUNCTION THAT WAS BROKEN ---
-// Get All Posts
-const getPosts = async (req, res) => {
+// GET ALL APPROVED POSTS
+const getPosts = async (req, res, next) => {
   try {
-    // This finds all posts, sorts them by newest first,
-    // and populates the 'author' field with their 'username'
-    const posts = await Post.find()
-      .populate("author", "username")
-      .sort({ createdAt: -1 }); // Sort by newest
-      
+    const posts = await Post.find({ status: "approved" })
+      .populate("author", "username _id")
+      .sort({ createdAt: -1 }); // Sort by newest first
+
     res.status(200).json(posts);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("getPosts error:", err);
+    next(err);
   }
 };
 
-// --- 2. YOUR OTHER FUNCTIONS (ALREADY CORRECT) ---
-
-// Get Single Post
-const getPost = async (req, res) => {
+// GET SINGLE APPROVED POST
+const getPost = async (req, res, next) => {
   try {
-    const post = await Post.findById(req.params.id)
-      .populate("author", "username email");
-      
-    if (!post) return res.status(404).json({ msg: "Post not found" });
-    res.json(post);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
+    const post = await Post.findOne({
+      _id: req.params.id,
+      status: "approved",
+    }).populate("author", "username _id email");
 
-// Create Post
-const createPost = async (req, res) => {
-  try {
-    const { title, content } = req.body; 
-
-    if (!req.file) {
-      return res.status(400).json({ error: "Image file is required" });
+    if (!post) {
+      return res.status(404).json({ msg: "Post not found or not approved" });
     }
 
-    const imageUrl = `/uploads/${req.file.filename}`;
+    res.json(post);
+  } catch (err) {
+    console.error("getPost error:", err);
+    next(err);
+  }
+};
 
+// CREATE POST
+const createPost = async (req, res, next) => {
+  try {
+    const { title, content, imageUrl } = req.body;
+    const user = req.user;
+
+    // Fail fast validation
+    if (!title || !content) {
+      return res.status(400).json({ msg: "Title and Content are required" });
+    }
+    if (!user) return res.status(401).json({ msg: "Unauthorized" });
+
+    const isAdmin = user.role === "admin";
+
+    // Direct creation - highly efficient
     const post = await Post.create({
       title,
       content,
-      imageUrl: imageUrl, 
-      author: req.user.id,
+      imageUrl: imageUrl || null,
+      author: user.id,
+      status: isAdmin ? "approved" : "pending",
     });
-    
-    res.status(201).json(post);
+
+    return res.status(201).json({
+      msg: isAdmin ? "Post approved" : "Post submitted for approval",
+      post,
+    });
   } catch (err) {
-    console.error("CREATE POST FAILED:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("createPost error:", err);
+    next(err);
   }
 };
 
-//Upvote a Post
-const upvotePost = async (req, res) => {
+// LIKE POST (Toggle)
+const likePost = async (req, res, next) => {
   try {
-    const postId = req.params.id;
-    const userId = req.user.id;
-
-    const post = await Post.findById(postId);
+    const post = await Post.findById(req.params.id);
     if (!post) return res.status(404).json({ msg: "Post not found" });
 
-    if (post.upvotes.includes(userId)) {
-      post.upvotes = post.upvotes.filter(id => id.toString() !== userId);
+    const userId = req.user.id;
+    if (!post.likes) post.likes = [];
+    if (!post.dislikes) post.dislikes = [];
+
+    const likeIndex = post.likes.indexOf(userId);
+    const dislikeIndex = post.dislikes.indexOf(userId);
+
+    if (likeIndex !== -1) {
+      post.likes.splice(likeIndex, 1);
     } else {
-      post.downvotes = post.downvotes.filter(id => id.toString() !== userId);
-      post.upvotes.push(userId);
+      post.likes.push(userId);
+      if (dislikeIndex !== -1) post.dislikes.splice(dislikeIndex, 1);
     }
 
     await post.save();
-    res.json(post);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    const updated = await Post.findById(req.params.id).populate("author", "username");
+    res.json(updated);
+  } catch (err) { next(err); }
 };
 
-// Downvote a Post
-const downvotePost = async (req, res) => {
+// DOWNVOTE POST (Toggle)
+const downvotePost = async (req, res, next) => {
   try {
-    const postId = req.params.id;
-    const userId = req.user.id;
-
-    const post = await Post.findById(postId);
+    const post = await Post.findById(req.params.id);
     if (!post) return res.status(404).json({ msg: "Post not found" });
 
-    if (post.downvotes.includes(userId)) {
-      post.downvotes = post.downvotes.filter(id => id.toString() !== userId);
+    const userId = req.user.id;
+    if (!post.likes) post.likes = [];
+    if (!post.dislikes) post.dislikes = [];
+
+    const likeIndex = post.likes.indexOf(userId);
+    const dislikeIndex = post.dislikes.indexOf(userId);
+
+    if (dislikeIndex !== -1) {
+      post.dislikes.splice(dislikeIndex, 1);
     } else {
-      post.upvotes = post.upvotes.filter(id => id.toString() !== userId);
-      post.downvotes.push(userId);
+      post.dislikes.push(userId);
+      if (likeIndex !== -1) post.likes.splice(likeIndex, 1);
     }
 
     await post.save();
-    res.json(post);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    const updated = await Post.findById(req.params.id).populate("author", "username");
+    res.json(updated);
+  } catch (err) { next(err); }
 };
 
+// DELETE POST
+const deletePost = async (req, res, next) => {
+  try {
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).json({ msg: "Post not found" });
 
-// --- 3. YOUR EXPORTS (ALL FUNCTIONS INCLUDED) ---
-module.exports = { 
-  createPost, 
-  getPosts, 
-  getPost, 
-  upvotePost, 
-  downvotePost 
+    if (post.author.toString() !== req.user.id && req.user.role !== "admin") {
+      return res.status(403).json({ msg: "Not authorized" });
+    }
+
+    await Comment.deleteMany({ postId: post._id });
+    await Post.findByIdAndDelete(req.params.id);
+
+    res.json({ msg: "Post removed" });
+  } catch (err) { next(err); }
+};
+
+// UPDATE POST
+const updatePost = async (req, res, next) => {
+  try {
+    const { title, content, imageUrl } = req.body;
+    const post = await Post.findById(req.params.id);
+
+    if (!post) return res.status(404).json({ msg: "Post not found" });
+
+    if (post.author.toString() !== req.user.id && req.user.role !== "admin") {
+      return res.status(403).json({ msg: "Not authorized" });
+    }
+
+    post.title = title;
+    post.content = content;
+    if (imageUrl) post.imageUrl = imageUrl;
+
+    const updated = await post.save();
+    res.json(updated);
+  } catch (err) { next(err); }
+};
+
+// ADMIN: GET UNAPPROVED
+const getUnapprovedPosts = async (req, res, next) => {
+  try {
+    const posts = await Post.find({ status: "pending" })
+      .populate("author", "username email")
+      .sort({ createdAt: -1 });
+    res.json(posts);
+  } catch (err) { next(err); }
+};
+
+// ADMIN: GET COUNT
+const getUnapprovedCount = async (req, res, next) => {
+  try {
+    const count = await Post.countDocuments({ status: "pending" });
+    res.json({ count });
+  } catch (err) { next(err); }
+};
+
+// ADMIN: APPROVE
+const approvePost = async (req, res, next) => {
+  try {
+    await Post.findByIdAndUpdate(req.params.id, { status: "approved", remarks: "" });
+    res.json({ msg: "Post approved" });
+  } catch (err) { next(err); }
+};
+
+// ADMIN: REJECT
+const rejectPost = async (req, res, next) => {
+  try {
+    await Post.findByIdAndUpdate(req.params.id, { status: "rejected", remarks: req.body.remarks });
+    res.json({ msg: "Post rejected" });
+  } catch (err) { next(err); }
+};
+
+// GET MY POSTS
+const getMyPosts = async (req, res, next) => {
+  try {
+    const posts = await Post.find({ author: req.user.id }).sort({ createdAt: -1 });
+    res.json(posts);
+  } catch (err) { next(err); }
+};
+
+module.exports = {
+  createPost,
+  getPosts,
+  getPost,
+  likePost,
+  downvotePost,
+  deletePost,
+  updatePost,
+  getUnapprovedPosts,
+  getUnapprovedCount,
+  approvePost,
+  rejectPost,
+  getMyPosts,
 };

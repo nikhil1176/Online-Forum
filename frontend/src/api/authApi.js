@@ -1,8 +1,18 @@
-// File: src/api/authApi.js
-import api from "./axiosConfig"; // Import the single, configured instance
+// src/api/authApi.js
+import axiosClient from "./axiosClient";
 
-export const login = (formData) => api.post("/auth/login", formData);
-export const register = (formData) => api.post("/auth/register", formData);
+export const register = (data) => {
+  return axiosClient.post("/auth/register", data);
+};
 
-// The interceptor now handles the token, so you don't need to pass it
-export const me = () => api.get("/auth/me");
+export const loginApi = (email, password) => {
+  return axiosClient.post("/auth/login", { email, password });
+};
+
+export const logoutApi = () => {
+  return axiosClient.post("/auth/logout");
+};
+
+export const me = () => {
+  return axiosClient.get("/auth/me");
+};
