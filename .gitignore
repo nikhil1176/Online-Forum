@@ -7,8 +7,7 @@
 # Frontend dependencies
 /frontend/node_modules
 
-#my part
-backend/models
+
 
 frontend/components/navbar
 

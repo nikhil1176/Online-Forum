@@ -3,7 +3,7 @@ import axios from "axios";
 
 const axiosClient = axios.create({
   // Uses your env variable if it exists, otherwise defaults to localhost:5000
-  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api",
+  baseURL: import.meta.env.VITE_API_BASE_URL || "https://online-forum-1a4d.onrender.com/api",
   withCredentials: true,
 });
 
