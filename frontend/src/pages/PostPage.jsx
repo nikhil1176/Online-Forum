@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { getPost } from "../api/postApi";
-import CommentSection from "../components/CommentSection";
+import CommentSection from "../components/commentSection";
 
 export default function PostPage() {
   const { id } = useParams();
