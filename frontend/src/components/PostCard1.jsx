@@ -1,7 +1,9 @@
 import React from "react";
 import { Link } from "react-router-dom";
 
-const BACKEND_URL = "http://localhost:5000";
+const BACKEND_URL = import.meta.env.VITE_API_BASE_URL
+? import.meta.env.VITE_API_BASE_URL.replace('/api', '')
+: "http://localhost:5000";
 
 export default function PostCard({ post }) {
   const imageUrl = post.imageUrl ? `${BACKEND_URL}${post.imageUrl}` : null;

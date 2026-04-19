@@ -49,7 +49,7 @@ export const AuthProvider = ({ children }) => {
 
       try {
         // Verify token with backend
-        const res = await axios.get("http://localhost:5000/api/auth/me", {
+        const res = await axios.get("/auth/me", {
           headers: { Authorization: `Bearer ${token}` },
         });
         
