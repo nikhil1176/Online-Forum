@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useContext } from "react";
-import axios from "axios"; // Uses default axios for the initial fetch
+import axiosClient from "../api/axiosClient"; // Uses default axios for the initial fetch
 
 export const AuthContext = createContext();
 
@@ -49,7 +49,7 @@ export const AuthProvider = ({ children }) => {
 
       try {
         // Verify token with backend
-        const res = await axios.get("/auth/me", {
+        const res = await axiosClient.get("/auth/me", {
           headers: { Authorization: `Bearer ${token}` },
         });
         
