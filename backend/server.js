@@ -13,9 +13,26 @@ app.use(express.json());
 app.use(cookieParser());
 
 // CORS setup: Updated for production and development
+const allowedOrigins = [
+  "http://localhost:5173",               // Your local Vite server
+  "https://onlineforum-lime.vercel.app", // Your Vercel production app
+  process.env.FRONTEND_URL               // Render environment variable
+].filter(Boolean); // This removes the env variable if it's currently empty
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173", 
+    origin: function (origin, callback) {
+      // allow requests with no origin (like mobile apps or server-to-server requests)
+      if (!origin) return callback(null, true);
+      
+      // If the origin is in our allowed list, let it pass
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      } else {
+        const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+        return callback(new Error(msg), false);
+      }
+    },
     credentials: true,
   })
 );
